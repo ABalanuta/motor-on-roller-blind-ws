@@ -269,8 +269,8 @@ void setup(void)
   WiFiManagerParameter custom_text("<p><b>Optional MQTT server parameters:</b></p>");
   WiFiManagerParameter custom_mqtt_server("server", "MQTT server", mqtt_server, 40);
   WiFiManagerParameter custom_mqtt_port("port", "MQTT port", mqtt_port, 6);
-  WiFiManagerParameter custom_mqtt_uid("uid", "MQTT username", mqtt_server, 40);
-  WiFiManagerParameter custom_mqtt_pwd("pwd", "MQTT password", mqtt_server, 40);
+  WiFiManagerParameter custom_mqtt_uid("uid", "MQTT username", mqtt_uid, 40);
+  WiFiManagerParameter custom_mqtt_pwd("pwd", "MQTT password", mqtt_pwd, 40);
   WiFiManagerParameter custom_text2("<script>t = document.createElement('div');t2 = document.createElement('input');t2.setAttribute('type', 'checkbox');t2.setAttribute('id', 'tmpcheck');t2.setAttribute('style', 'width:10%');t2.setAttribute('onclick', \"if(document.getElementById('Rotation').value == 'false'){document.getElementById('Rotation').value = 'true'} else {document.getElementById('Rotation').value = 'false'}\");t3 = document.createElement('label');tn = document.createTextNode('Clockwise rotation');t3.appendChild(t2);t3.appendChild(tn);t.appendChild(t3);document.getElementById('Rotation').style.display='none';document.getElementById(\"Rotation\").parentNode.insertBefore(t, document.getElementById(\"Rotation\"));</script>");
   //Setup WIFI Manager
   WiFiManager wifiManager;
