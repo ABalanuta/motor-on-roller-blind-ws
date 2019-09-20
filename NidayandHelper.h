@@ -2,8 +2,8 @@
 #define NidayandHelper_h
 
 #include "Arduino.h"
-#include <ArduinoJson.h>
 #include "FS.h"
+#include <ArduinoJson.h>
 #include <PubSubClient.h>
 #include <WiFiClient.h>
 #include <WiFiManager.h>
@@ -16,7 +16,7 @@ class NidayandHelper {
     JsonVariant getconfig();
     boolean saveconfig(JsonVariant json);
 
-    String mqtt_gettopic(String type);
+    String mqtt_gettopic(String type, String dev_name);
 
     void mqtt_reconnect(PubSubClient& psclient);
     void mqtt_reconnect(PubSubClient& psclient, std::list<const char*> topics);

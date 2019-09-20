@@ -16,17 +16,25 @@
 //--------------- CHANGE PARAMETERS ------------------
 //Configure Default Settings for Access Point logon
 String APid = "BlindsConnectAP";    //Name of access point
-String APpw = "nidayand";           //Hardcoded password for access point
+String APpw = "Welcome123";           //Hardcoded password for access point
 
 //Set up buttons
-const uint8_t btnup = D5; //Up button
-const uint8_t btndn = D6; //Down button
-const uint8_t btnres = D7; //Reset button
+const uint8_t btnup = D1; //Up button
+const uint8_t btndn = D2; //Down button
+
+//Set up motor pins
+const uint8_t motor_in1 = D5; //IN1
+const uint8_t motor_in2 = D6; //IN2
+const uint8_t motor_in3 = D7; //IN3
+const uint8_t motor_in4 = D8; //IN4
+
+//Set up heartbeat led
+const uint8_t heartbeat = D4; //use embedded led
 
 //----------------------------------------------------
 
 // Version number for checking if there are new code releases and notifying the user
-String version = "1.3.3";
+String version = "1.3.1";
 
 NidayandHelper helper = NidayandHelper();
 
@@ -55,7 +63,10 @@ bool shouldSaveConfig = false;      //Used for WIFI Manager callback to save par
 boolean initLoop = true;            //To enable actions first time the loop is run
 boolean ccw = true;                 //Turns counter clockwise to lower the curtain
 
-Stepper_28BYJ_48 small_stepper(D1, D3, D2, D4); //Initiate stepper driver
+boolean debug = false;              //Reduce logs
+boolean supportOTA = false;         //Disable OTA if not needed
+
+Stepper_28BYJ_48 small_stepper(motor_in1, motor_in2, motor_in3, motor_in4); //Initiate stepper driver
 
 ESP8266WebServer server(80);              // TCP server at port 80 will respond to HTTP requests
 WebSocketsServer webSocket = WebSocketsServer(81);  // WebSockets will respond on port 81
@@ -112,7 +123,6 @@ void sendmsg(String topic, String payload) {
 
   helper.mqtt_publish(psclient, topic, payload);
 }
-
 
 /****************************************************************************************
 */
@@ -211,10 +221,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   is not moving
 */
 void stopPowerToCoils() {
-  digitalWrite(D1, LOW);
-  digitalWrite(D2, LOW);
-  digitalWrite(D3, LOW);
-  digitalWrite(D4, LOW);
+  digitalWrite(motor_in1, LOW);
+  digitalWrite(motor_in2, LOW);
+  digitalWrite(motor_in3, LOW);
+  digitalWrite(motor_in4, LOW);
   Serial.println(F("Motor stopped"));
 }
 
@@ -243,6 +253,20 @@ void handleNotFound() {
   server.send(404, "text/plain", message);
 }
 
+void led_blinking(uint8_t blinks, uint32_t delay_led_on, uint32_t delay_led_off) {
+  for (uint8_t i = 0; i < blinks; i++) {
+    digitalWrite(heartbeat, LOW);  //LED on
+    ESP.wdtFeed();
+    yield();
+    delay(delay_led_on);
+
+    digitalWrite(heartbeat, HIGH); //LED off
+    ESP.wdtFeed();
+    yield();
+    delay(delay_led_off);
+  }
+}
+
 void setup(void)
 {
   Serial.begin(115200);
@@ -251,46 +275,75 @@ void setup(void)
 
   pinMode(btnup, INPUT_PULLUP);
   pinMode(btndn, INPUT_PULLUP);
-  pinMode(btnres, INPUT_PULLUP);
+  //pinMode(btncfg, INPUT_PULLUP);
+
+  pinMode(heartbeat, OUTPUT);
+  digitalWrite(heartbeat, HIGH);
+
+  //starting signal on heartbeat LED
+  led_blinking(3, 100, 100);
 
   //Reset the action
   action = "";
-
-  //Set MQTT properties
-  outputTopic = helper.mqtt_gettopic("out");
-  inputTopic = helper.mqtt_gettopic("in");
 
   //Set the WIFI hostname
   WiFi.hostname(config_name);
 
   //Define customer parameters for WIFI Manager
-  WiFiManagerParameter custom_config_name("Name", "Bonjour name", config_name, 40);
+  WiFiManagerParameter custom_text1("<br><b>Required device name:</b>");
+  WiFiManagerParameter custom_config_name("Name", "Device name", config_name, 40);
   WiFiManagerParameter custom_rotation("Rotation", "Clockwise rotation", config_rotation, 40);
-  WiFiManagerParameter custom_text("<p><b>Optional MQTT server parameters:</b></p>");
+  WiFiManagerParameter custom_text2("<p><b>Optional MQTT server parameters:</b></p>");
   WiFiManagerParameter custom_mqtt_server("server", "MQTT server", mqtt_server, 40);
   WiFiManagerParameter custom_mqtt_port("port", "MQTT port", mqtt_port, 6);
   WiFiManagerParameter custom_mqtt_uid("uid", "MQTT username", mqtt_uid, 40);
   WiFiManagerParameter custom_mqtt_pwd("pwd", "MQTT password", mqtt_pwd, 40);
-  WiFiManagerParameter custom_text2("<script>t = document.createElement('div');t2 = document.createElement('input');t2.setAttribute('type', 'checkbox');t2.setAttribute('id', 'tmpcheck');t2.setAttribute('style', 'width:10%');t2.setAttribute('onclick', \"if(document.getElementById('Rotation').value == 'false'){document.getElementById('Rotation').value = 'true'} else {document.getElementById('Rotation').value = 'false'}\");t3 = document.createElement('label');tn = document.createTextNode('Clockwise rotation');t3.appendChild(t2);t3.appendChild(tn);t.appendChild(t3);document.getElementById('Rotation').style.display='none';document.getElementById(\"Rotation\").parentNode.insertBefore(t, document.getElementById(\"Rotation\"));</script>");
+  WiFiManagerParameter custom_text3("<script>t = document.createElement('div');t2 = document.createElement('input');t2.setAttribute('type', 'checkbox');t2.setAttribute('id', 'tmpcheck');t2.setAttribute('style', 'width:10%');t2.setAttribute('onclick', \"if(document.getElementById('Rotation').value == 'false'){document.getElementById('Rotation').value = 'true'} else {document.getElementById('Rotation').value = 'false'}\");t3 = document.createElement('label');tn = document.createTextNode('Clockwise rotation');t3.appendChild(t2);t3.appendChild(tn);t.appendChild(t3);document.getElementById('Rotation').style.display='none';document.getElementById(\"Rotation\").parentNode.insertBefore(t, document.getElementById(\"Rotation\"));</script>");
   //Setup WIFI Manager
   WiFiManager wifiManager;
-  
-  //reset settings - for testing
-  //clean FS, for testing
-  //helper.resetsettings(wifiManager);
 
+  //reset settings on startup
+  delay(1000);
+  if (!(digitalRead(btnup) || digitalRead(btndn))) {  
+    Serial.println(F("Hold to reset on startup"));
+    uint32_t restime = millis();
+    while (!(digitalRead(btnup) || digitalRead(btndn))) {
+      if (millis() - restime >= 5000) {
+        //turn on the lED
+        digitalWrite(heartbeat, LOW);
+      }
+      yield(); //Prevent watchdog trigger
+    }
+    if (millis() - restime >= 5000) {
+      stopPowerToCoils();
+      //starting signal on heartbeat LED
+      led_blinking(10, 100, 100);
+      Serial.println(F("Removing configs..."));
+      helper.resetsettings(wifiManager);
+    }
+  }
+
+  //turn on embedded LED
+  digitalWrite(heartbeat, LOW);
   wifiManager.setSaveConfigCallback(saveConfigCallback);
   //add all your parameters here
+  wifiManager.addParameter(&custom_text1);
   wifiManager.addParameter(&custom_config_name);
   wifiManager.addParameter(&custom_rotation);
-  wifiManager.addParameter(&custom_text);
+  wifiManager.addParameter(&custom_text2);
   wifiManager.addParameter(&custom_mqtt_server);
   wifiManager.addParameter(&custom_mqtt_port);
   wifiManager.addParameter(&custom_mqtt_uid);
   wifiManager.addParameter(&custom_mqtt_pwd);
-  wifiManager.addParameter(&custom_text2);
+  wifiManager.addParameter(&custom_text3);
 
   wifiManager.autoConnect(APid.c_str(), APpw.c_str());
+
+  //turn off embedded LED
+  digitalWrite(heartbeat, HIGH);
+  ESP.wdtFeed();
+  yield();
+  delay(1000);
 
   //Load config upon start
   if (!SPIFFS.begin()) {
@@ -352,9 +405,14 @@ void setup(void)
   webSocket.begin();
   webSocket.onEvent(webSocketEvent);
 
+
   /* Setup connection for MQTT and for subscribed
     messages IF a server address has been entered
   */
+  //Set MQTT properties
+  outputTopic = helper.mqtt_gettopic("out", config_name);
+  inputTopic = helper.mqtt_gettopic("in", config_name);
+
   if (String(mqtt_server) != "") {
     Serial.println(F("Registering MQTT server"));
     psclient.setServer(mqtt_server, String(mqtt_port).toInt());
@@ -371,45 +429,53 @@ void setup(void)
   else
     ccw = false;
 
-
   //Update webpage
   INDEX_HTML.replace("{VERSION}", "V" + version);
   INDEX_HTML.replace("{NAME}", String(config_name));
 
-
-  //Setup OTA
-  //helper.ota_setup(config_name);
-  {
-    // Authentication to avoid unauthorized updates
-    //ArduinoOTA.setPassword(OTA_PWD);
-
-    ArduinoOTA.setHostname(config_name);
-
-    ArduinoOTA.onStart([]() {
-      Serial.println(F("Start"));
-    });
-    ArduinoOTA.onEnd([]() {
-      Serial.println(F("\nEnd"));
-    });
-    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    });
-    ArduinoOTA.onError([](ota_error_t error) {
-      Serial.printf("Error[%u]: ", error);
-      if (error == OTA_AUTH_ERROR) Serial.println(F("Auth Failed"));
-      else if (error == OTA_BEGIN_ERROR) Serial.println(F("Begin Failed"));
-      else if (error == OTA_CONNECT_ERROR) Serial.println(F("Connect Failed"));
-      else if (error == OTA_RECEIVE_ERROR) Serial.println(F("Receive Failed"));
-      else if (error == OTA_END_ERROR) Serial.println(F("End Failed"));
-    });
-    ArduinoOTA.begin();
+  if (supportOTA) {
+    //Setup OTA
+    //helper.ota_setup(config_name);
+    {
+      // Authentication to avoid unauthorized updates
+      //ArduinoOTA.setPassword(OTA_PWD);
+        ArduinoOTA.setHostname(config_name);
+          ArduinoOTA.onStart([]() {
+          Serial.println(F("Start"));
+        });
+        ArduinoOTA.onEnd([]() {
+          Serial.println(F("\nEnd"));
+        });
+        ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+          Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+        });
+        ArduinoOTA.onError([](ota_error_t error) {
+          Serial.printf("Error[%u]: ", error);
+          if (error == OTA_AUTH_ERROR) Serial.println(F("Auth Failed"));
+          else if (error == OTA_BEGIN_ERROR) Serial.println(F("Begin Failed"));
+          else if (error == OTA_CONNECT_ERROR) Serial.println(F("Connect Failed"));
+          else if (error == OTA_RECEIVE_ERROR) Serial.println(F("Receive Failed"));
+          else if (error == OTA_END_ERROR) Serial.println(F("End Failed"));
+        });
+        ArduinoOTA.begin();
+    }
   }
+
+  //connected to network and ready to use signal on hearbeat LED
+  led_blinking(3, 600, 500);
 }
 
 void loop(void)
 {
+  static int btnup_state_old = digitalRead(btnup);
+  static int btndn_state_old = digitalRead(btndn);
+  int btnup_state_new;
+  int btndn_state_new;
+
   //OTA client code
-  ArduinoOTA.handle();
+  if (supportOTA) {
+    ArduinoOTA.handle();
+  }
 
   //Websocket listner
   webSocket.loop();
@@ -421,52 +487,70 @@ void loop(void)
   if (mqttActive)
     helper.mqtt_reconnect(psclient, mqtt_uid, mqtt_pwd, { inputTopic.c_str() });
 
-  if (digitalRead(btnres)) {
+  //Do nothing if 2 buttons are pressed
+  btndn_state_new = digitalRead(btndn);
+  btnup_state_new = digitalRead(btnup);
+  if (!(!btnup_state_new && !btndn_state_new)) {
     bool pres_cont = false;
-    while (!digitalRead(btndn) && currentPosition > 0) {
-      Serial.println(F("Moving down"));
-      small_stepper.step(ccw ? -1 : 1);
-      currentPosition = currentPosition - 1;
-      yield();
-      delay(50);
-      pres_cont = true;
+
+    //Button Down
+    if (!btndn_state_new && btndn_state_old) {
+       Serial.println(F("BtnDn has been pressed"));
+
+      if (action == "auto") {
+         //break "auto" command
+         Serial.println(F("Auto move is broken"));
+         path = 0;
+         action = "";
+         pres_cont = true;
+         saveItNow = true;
+      } else {
+        if (currentPosition > 0) {
+          Serial.println(F("Set 0 by button down"));
+          processMsg("0", 0);
+        }
+      }
     }
-    while (!digitalRead(btnup) && currentPosition < maxPosition) {
-      Serial.println(F("Moving up"));
-      small_stepper.step(ccw ? 1 : -1);
-      currentPosition = currentPosition + 1;
-      yield();
-      delay(50);
-      pres_cont = true;
+    if (btndn_state_new && !btndn_state_old) {
+       Serial.println(F("BtnDn has been released"));
+       ESP.wdtFeed();
+       yield();
+       delay(250);
     }
+    btndn_state_old = btndn_state_new;
+
+    //Button Up
+    if (!btnup_state_new && btnup_state_old) {
+       Serial.println(F("BtnUp has been pressed"));
+
+      if (action == "auto") {
+         //break "auto" command
+         Serial.println(F("Auto move is broken"));
+         path = 0;
+         action = "";
+         pres_cont = true;
+         saveItNow = true;
+      } else {
+        if (currentPosition < maxPosition) {
+          Serial.println(F("Set 0 by button down"));
+          processMsg("100", 0);
+        }
+      }
+    }
+    if (btnup_state_new && !btnup_state_old) {
+       Serial.println(F("BtnUp has been released"));
+       ESP.wdtFeed();
+       yield();
+       delay(250);
+    }
+    btnup_state_old = btnup_state_new;
+
     if (pres_cont) {
       int set = (setPos * 100) / maxPosition;
       int pos = (currentPosition * 100) / maxPosition;
       webSocket.broadcastTXT("{ \"set\":" + String(set) + ", \"position\":" + String(pos) + " }");
       sendmsg(outputTopic, "{ \"set\":" + String(set) + ", \"position\":" + String(pos) + " }");
       Serial.println(F("Stopped. Reached wanted position"));
-      saveItNow = true;
-    }
-  }
-
-  if (!(digitalRead(btnres) || digitalRead(btndn) || digitalRead(btnup))) {
-    Serial.println(F("Hold to reset..."));
-    uint32_t restime = millis();
-    while (!(digitalRead(btnres) || digitalRead(btndn) || digitalRead(btnup)))
-      yield(); //Prevent watchdog trigger
-
-    if (millis() - restime >= 2500) {
-      stopPowerToCoils();
-      Serial.println(F("Removing configs..."));
-
-      WiFi.disconnect(true);
-      WiFiManager wifiManager;
-      helper.resetsettings(wifiManager);
-
-      Serial.println(F("Reboot"));
-      ESP.wdtFeed();
-      yield();
-      ESP.restart();
     }
   }
 
@@ -474,7 +558,6 @@ void loop(void)
   if (saveItNow) {
     saveConfig();
     saveItNow = false;
-
     /*
       If no action is required by the motor make sure to
       turn off all coils to avoid overheating and less energy
@@ -485,14 +568,17 @@ void loop(void)
 
   //Manage actions. Steering of the blind
   if (action == "auto") {
-
     //Automatically open or close blind
     if (currentPosition > path) {
-      Serial.println(F("Moving down"));
+      if (debug) {
+        Serial.println(F("Moving down"));
+      }
       small_stepper.step(ccw ? -1 : 1);
       currentPosition = currentPosition - 1;
     } else if (currentPosition < path) {
-      Serial.println(F("Moving up"));
+      if (debug) {
+        Serial.println(F("Moving up"));
+      }
       small_stepper.step(ccw ? 1 : -1);
       currentPosition = currentPosition + 1;
     } else {
@@ -511,7 +597,9 @@ void loop(void)
     //Manually running the blind
     small_stepper.step(ccw ? path : -path);
     currentPosition = currentPosition + path;
-    Serial.println(F("Moving motor manually"));
+    if (debug) {
+      Serial.println(F("Moving motor manually"));
+    }
   }
 
   /*

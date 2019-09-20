@@ -59,15 +59,15 @@ boolean NidayandHelper::saveconfig(JsonVariant json) {
 
   json.printTo(configFile);
   configFile.flush(); //Making sure it's saved
-  
+
   Serial.println("Saved JSON to SPIFFS");
   json.printTo(Serial);
   Serial.println();
   return true;
 }
 
-String NidayandHelper::mqtt_gettopic(String type) {
-  return "/raw/esp8266/" + String(ESP.getChipId()) + "/" + type;
+String NidayandHelper::mqtt_gettopic(String type, String dev_name) {
+  return "/BLIND/"+ dev_name + "/" + type;
 }
 
 void NidayandHelper::mqtt_reconnect(PubSubClient& psclient) {
@@ -96,7 +96,7 @@ void NidayandHelper::mqtt_reconnect(PubSubClient& psclient, String uid, String p
       Serial.println("connected");
 
       //Send register MQTT message with JSON of chipid and ip-address
-      this->mqtt_publish(psclient, "/raw/esp8266/register", "{ \"id\": \"" + String(ESP.getChipId()) + "\", \"ip\":\"" + WiFi.localIP().toString() + "\"}");
+      this->mqtt_publish(psclient, "/BLIND/register", "{\"ip\":\"" + WiFi.localIP().toString() + "\"}");
 
       //Setup subscription
       if (!topics.empty()) {
@@ -131,6 +131,16 @@ void NidayandHelper::mqtt_publish(PubSubClient& psclient, String topic, String p
 }
 
 void NidayandHelper::resetsettings(WiFiManager& wifim) {
-  SPIFFS.format();
   wifim.resetSettings();
+  ESP.wdtFeed();
+  yield();
+  delay(500);
+  SPIFFS.format();
+  Serial.println("Settings cleared");
+  ESP.wdtFeed();
+  yield();
+  ESP.reset();
+
+
+      ESP.restart();
 }
