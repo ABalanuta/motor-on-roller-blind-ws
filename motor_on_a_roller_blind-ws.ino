@@ -151,10 +151,17 @@ void processMsg(String res, uint8_t clientnum) {
     saveItNow = true;
     action = "manual";
   } else if (res == "(0)") {
+    //Send position details to client
+    int set = ceil((((float)setPos) * 100) / maxPosition);
+    int pos = ceil((((float)currentPosition) * 100) / maxPosition);
+    webSocket.broadcastTXT("{ \"set\":" + String(set) + ", \"position\":" + String(pos) + " }");
+    sendmsg(outputTopic, "{ \"set\":" + String(set) + ", \"position\":" + String(pos) + " }");
 
     //Stop
+    if (action == "auto") {
+      saveItNow = true;
+    }
     path = 0;
-    saveItNow = true;
     action = "manual";
   } else if (res == "(1)") {
 
@@ -168,8 +175,8 @@ void processMsg(String res, uint8_t clientnum) {
     action = "manual";
   } else if (res == "(update)") {
     //Send position details to client
-    int set = (setPos * 100) / maxPosition;
-    int pos = (currentPosition * 100) / maxPosition;
+    int set = ceil((((float)setPos) * 100) / maxPosition);
+    int pos = ceil((((float)currentPosition) * 100) / maxPosition);
     sendmsg(outputTopic, "{ \"set\":" + String(set) + ", \"position\":" + String(pos) + " }");
     webSocket.sendTXT(clientnum, "{ \"set\":" + String(set) + ", \"position\":" + String(pos) + " }");
   } else if (res == "(ping)") {
@@ -180,16 +187,22 @@ void processMsg(String res, uint8_t clientnum) {
        Incoming value = 0-100
        path is now the position
     */
+
     path = maxPosition * res.toInt() / 100;
     setPos = path; //Copy path for responding to updates
     action = "auto";
 
-    int set = (setPos * 100) / maxPosition;
-    int pos = (currentPosition * 100) / maxPosition;
-
-    //Send the instruction to all connected devices
+    int set = ceil((((float)setPos) * 100) / maxPosition);
+    int pos = ceil((((float)currentPosition) * 100) / maxPosition);
     sendmsg(outputTopic, "{ \"set\":" + String(set) + ", \"position\":" + String(pos) + " }");
     webSocket.broadcastTXT("{ \"set\":" + String(set) + ", \"position\":" + String(pos) + " }");
+
+    if (set == pos) {
+      Serial.print(F("Position already set - ignore command"));
+      //Stop
+      path = 0;
+      action = "manual";
+    }
   }
 }
 
@@ -499,14 +512,11 @@ void loop(void)
 
       if (action == "auto") {
          //break "auto" command
-         Serial.println(F("Auto move is broken"));
-         path = 0;
-         action = "";
-         pres_cont = true;
-         saveItNow = true;
+         Serial.println(F("Auto move is broken by BtnDn"));
+         processMsg("(0)", 0);
       } else {
         if (currentPosition > 0) {
-          Serial.println(F("Set 0 by button down"));
+          Serial.println(F("Set 0 by BtnDn"));
           processMsg("0", 0);
         }
       }
@@ -525,14 +535,11 @@ void loop(void)
 
       if (action == "auto") {
          //break "auto" command
-         Serial.println(F("Auto move is broken"));
-         path = 0;
-         action = "";
-         pres_cont = true;
-         saveItNow = true;
+         Serial.println(F("Auto move is broken by BtnUp"));
+         processMsg("(0)", 0);
       } else {
         if (currentPosition < maxPosition) {
-          Serial.println(F("Set 0 by button down"));
+          Serial.println(F("Set 100 by BtnUp "));
           processMsg("100", 0);
         }
       }
@@ -544,14 +551,6 @@ void loop(void)
        delay(250);
     }
     btnup_state_old = btnup_state_new;
-
-    if (pres_cont) {
-      int set = (setPos * 100) / maxPosition;
-      int pos = (currentPosition * 100) / maxPosition;
-      webSocket.broadcastTXT("{ \"set\":" + String(set) + ", \"position\":" + String(pos) + " }");
-      sendmsg(outputTopic, "{ \"set\":" + String(set) + ", \"position\":" + String(pos) + " }");
-      Serial.println(F("Stopped. Reached wanted position"));
-    }
   }
 
   //Storing positioning data and turns off the power to the coils
@@ -584,8 +583,8 @@ void loop(void)
     } else {
       path = 0;
       action = "";
-      int set = (setPos * 100) / maxPosition;
-      int pos = (currentPosition * 100) / maxPosition;
+      int set = ceil((((float)setPos) * 100) / maxPosition);
+      int pos = ceil((((float)currentPosition) * 100) / maxPosition);
       webSocket.broadcastTXT("{ \"set\":" + String(set) + ", \"position\":" + String(pos) + " }");
       sendmsg(outputTopic, "{ \"set\":" + String(set) + ", \"position\":" + String(pos) + " }");
       Serial.println(F("Stopped. Reached wanted position"));

@@ -47,20 +47,61 @@ This is one-time-only issue so next resets will be done properly.
 
 ## New pins configuration
 Button pins: 
-1. Up - D1
-2. Down - D2
+1. `Up - D1`
+2. `Down - D2`
 
 Motor pins: 
-1. IN1 - D5
-2. IN2 - D6
-3. IN3 - D7
-4. IN4 - D8
+1. `IN1 - D5`
+2. `IN2 - D6`
+3. `IN3 - D7`
+4. `IN4 - D8`
 
-Embedded LED (D4) works as heartbeat:
+Embedded LED (`D4`) works as heartbeat:
 - 3 short blinks: booting device/starting up (please note that 3 short blinks in loop can be triggered by wrong configuration: device name is required. In case of crash loop please erase configuration by factory reset and next remove power source)
 - LED is on constantly: AP mode / Configuration mode (please check available WiFi networks and connect to  **BlindsConnectAP**)
 - 3 long blinks: connected to network and ready to use (please calibrate device after first connection)
 
+## Support for Home-Assistant
+
+Entities Card:
+![link](https://github.com/kkemot/motor-on-roller-blind-ws/blob/master/pics/ha_cover_mqtt_1.png?raw=true "Title")
+
+`Device name` for below example is `OKNO_1`
+
+Add below code to configuration.yaml:
+```
+homeassistant:
+  packages: !include_dir_named packages
+```
+
+Create new package file for covers, e.g.: packages\covers.yaml
+
+```
+cover:
+  - platform: mqtt
+    name: "Window 1A"
+    command_topic: "/BLIND/Okno1A/in"
+    position_topic: "/BLIND/Okno1A/outOld"
+    set_position_topic: "/BLIND/Okno1A/in"
+    payload_open: "0"
+    payload_close: "100"
+    payload_stop: "(0)"
+    position_open: 100
+    position_closed: 0
+    optimistic: false
+    value_template: '{{ value_json.position }}'
+
+```
+Add new Entities Card to your configuration, e.g.:
+```
+entities:
+  - entity: cover.mqtt_cover
+show_header_toggle: false
+title: Cover
+type: entities
+```
+`0%` means that cover is opened
+`100%` means that cover is closed
 
 # Required libraries (3rd party)
 - Stepper_28BYJ_48: https://github.com/thomasfredericks/Stepper_28BYJ_48/
