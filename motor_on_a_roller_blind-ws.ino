@@ -350,7 +350,18 @@ void setup(void)
   wifiManager.addParameter(&custom_mqtt_pwd);
   wifiManager.addParameter(&custom_text3);
 
+  wifiManager.setConfigPortalTimeout(180);
   wifiManager.autoConnect(APid.c_str(), APpw.c_str());
+  //move below function to "public" in WiFiManager.h
+  //boolean       configPortalHasTimeout();
+  if (wifiManager.configPortalHasTimeout()) {
+    Serial.println(F("Configuration/Connection timeout"));
+    ESP.wdtFeed();
+    yield();
+    ESP.reset();
+    ESP.restart();
+    delay(1000);
+  }
 
   //turn off embedded LED
   digitalWrite(heartbeat, HIGH);

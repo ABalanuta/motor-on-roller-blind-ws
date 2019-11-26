@@ -140,7 +140,5 @@ void NidayandHelper::resetsettings(WiFiManager& wifim) {
   ESP.wdtFeed();
   yield();
   ESP.reset();
-
-
-      ESP.restart();
+  ESP.restart();
 }
